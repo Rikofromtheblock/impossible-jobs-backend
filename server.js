@@ -1,27 +1,33 @@
-{
-  "name": "impossible-jobs-backend",
-  "version": "1.0.0",
-  "type": "module",
-  "description": "Backend for impossible jobs — AI-powered mission matching",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.24.0",
-    "better-sqlite3": "^9.4.3",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "express-rate-limit": "^7.2.0",
-    "helmet": "^7.1.0",
-    "uuid": "^9.0.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  }
-}
+import "dotenv/config";
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import { initDb } from "./db/index.js";
+import matchRouter from "./routes/match.js";
+import previewRouter from "./routes/preview.js";
+import missionsRouter from "./routes/missions.js";
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+app.use(helmet());
+app.use(cors({ origin: "*", methods: ["GET","POST"] }));
+app.use(express.json({ limit: "16kb" }));
+
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { error: "too many requests" },
+});
+
+app.use("/api/match",    aiLimiter, matchRouter);
+app.use("/api/preview",  aiLimiter, previewRouter);
+app.use("/api/missions", missionsRouter);
+
+app.get("/health", (_, res) => res.json({ status: "ok" }));
+app.use((_, res) => res.status(404).json({ error: "not found" }));
+app.use((err, _req, res, _next) => { console.error(err); res.status(500).json({ error: "server error" }); });
+
+initDb();
+app.listen(PORT, "0.0.0.0", () => console.log(`running on ${PORT}`));
