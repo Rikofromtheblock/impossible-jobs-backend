@@ -1,0 +1,71 @@
+import { Router } from "express";
+import Anthropic from "@anthropic-ai/sdk";
+
+const router = Router();
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+router.post("/", async (req, res) => {
+  try {
+    const { missionText = "", mindText = "", horizon = "", planet = "" } = req.body;
+
+    if (!missionText.trim() || !mindText.trim()) {
+      return res.status(400).json({ error: "mission and mind fields are required" });
+    }
+
+    const prompt = `You are writing a mission brief for "impossible jobs" — a job board that rejects traditional hiring.
+
+A company has told us:
+
+THE MISSION (the problem they're solving):
+"${missionText}"
+
+THE MIND THEY NEED:
+"${mindText}"
+
+HORIZON (when this makes sense):
+"${horizon || "not specified"}"
+
+COMPANY PLANET (their domain):
+"${planet || "not specified"}"
+
+Write a compelling mission brief in the voice of impossible jobs. Rules:
+- Everything lowercase
+- No corporate language — write like you're talking to a brilliant friend
+- Short paragraphs, max 3 sentences each
+- The brief should make the RIGHT person feel seen and the wrong person self-select out
+- Do not mention job requirements, qualifications, years of experience, or CVs
+- Focus on the problem, the stakes, and what kind of mind this needs
+
+Return ONLY valid JSON, no other text:
+
+{
+  "title": "short evocative mission title (4-7 words, lowercase, not the job title)",
+  "brief": "2-3 short paragraphs about the mission and why it matters. the right person should feel a physical reaction reading this.",
+  "mind": "1-2 sentences describing the mind needed — instincts and obsessions, not qualifications.",
+  "horizon": "one sentence on timing and stakes.",
+  "tags": ["tag1", "tag2", "tag3", "tag4"],
+  "whyNow": "one sentence on why this particular moment matters for this problem."
+}`;
+
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const raw     = message.content[0].text.trim();
+    const jsonStr = raw.replace(/^```json\n?/, "").replace(/\n?```$/, "").trim();
+    const preview = JSON.parse(jsonStr);
+
+    res.json({ preview });
+
+  } catch (err) {
+    console.error("preview error:", err);
+    if (err instanceof SyntaxError) {
+      return res.status(502).json({ error: "ai returned unexpected format, please try again" });
+    }
+    res.status(500).json({ error: "preview failed, please try again" });
+  }
+});
+
+export default router;
